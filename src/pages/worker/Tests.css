@@ -1,0 +1,95 @@
+.tests-page {
+  padding: 2rem;
+}
+
+.tests-page h1 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.tests-page p {
+  color: var(--dark-gray);
+  margin-bottom: 2rem;
+}
+
+.test-card {
+  background-color: var(--white);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  transition: all var(--transition-normal);
+}
+
+.test-card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.test-card h3 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.test-info {
+  background-color: rgba(63, 81, 181, 0.05);
+  padding: 1rem;
+  border-radius: var(--border-radius-md);
+  margin-bottom: 1.5rem;
+}
+
+.test-info p {
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.test-info p:last-child {
+  margin-bottom: 0;
+}
+
+.test-progress {
+  background-color: var(--light-color);
+  padding: 0.75rem 1rem;
+  border-radius: var(--border-radius-md);
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+  color: var(--dark-gray);
+  text-align: center;
+}
+
+.test-navigation {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+}
+
+.test-result {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.test-result p {
+  margin-bottom: 1rem;
+  font-size: 1.125rem;
+}
+
+.test-result .text-success {
+  color: var(--success-color);
+  font-weight: 600;
+}
+
+.test-result .text-danger {
+  color: var(--danger-color);
+  font-weight: 600;
+}
+
+@media (max-width: 576px) {
+  .test-navigation {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .test-navigation .btn {
+    width: 100%;
+  }
+}

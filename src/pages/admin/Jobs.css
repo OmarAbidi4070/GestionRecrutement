@@ -1,0 +1,89 @@
+.jobs-page {
+  padding: 2rem;
+}
+
+.jobs-page h1 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.jobs-page p {
+  color: var(--dark-gray);
+  margin-bottom: 2rem;
+}
+
+.jobs-form-card {
+  background-color: var(--white);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.jobs-form-card h3 {
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+}
+
+.jobs-list h2 {
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.jobs-list .card {
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  transition: all var(--transition-normal);
+}
+
+.jobs-list .card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.jobs-list .card h3 {
+  color: var(--dark-color);
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.jobs-list .card p {
+  margin-bottom: 0.5rem;
+}
+
+.jobs-list .card p strong {
+  color: var(--dark-gray);
+}
+
+.jobs-list .card .text-muted {
+  color: var(--medium-gray);
+  font-size: 0.875rem;
+}
+
+.job-actions {
+  display: flex;
+  margin-top: 1.5rem;
+}
+
+.job-actions .btn {
+  margin-right: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .jobs-form-card {
+    padding: 1.5rem;
+  }
+}

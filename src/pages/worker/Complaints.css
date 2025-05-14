@@ -1,0 +1,85 @@
+.complaints-page {
+  padding: 2rem;
+}
+
+.complaints-page h1 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.complaints-page p {
+  color: var(--dark-gray);
+  margin-bottom: 2rem;
+}
+
+.complaints-form-card {
+  background-color: var(--white);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.complaints-form-card h3 {
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+}
+
+.complaints-list h2 {
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.complaints-list .card {
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  transition: all var(--transition-normal);
+}
+
+.complaints-list .card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.complaints-list .card h3 {
+  color: var(--dark-color);
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.complaints-list .card p {
+  margin-bottom: 0.5rem;
+}
+
+.complaints-list .card p strong {
+  color: var(--dark-gray);
+}
+
+.complaints-list .card .response-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--light-gray);
+}
+
+.complaints-list .card .response-section p strong {
+  color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+  .complaints-form-card {
+    padding: 1.5rem;
+  }
+}

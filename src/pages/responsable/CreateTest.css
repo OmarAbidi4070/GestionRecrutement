@@ -1,0 +1,85 @@
+.create-test-page {
+  padding: 2rem;
+}
+
+.create-test-page h1 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.create-test-page p {
+  color: var(--dark-gray);
+  margin-bottom: 2rem;
+}
+
+.test-info-card {
+  background-color: var(--white);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.test-info-card h3 {
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+}
+
+.question-card {
+  background-color: var(--white);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+}
+
+.question-card h4 {
+  color: var(--dark-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.125rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.question-card .btn-danger {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+}
+
+.option-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.option-group input[type="radio"] {
+  margin-right: 0.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.btn-secondary {
+  background-color: var(--secondary-color);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-secondary:hover {
+  background-color: var(--secondary-color-dark);
+}
