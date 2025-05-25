@@ -5,7 +5,6 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext"
 // Pages
 import Login from "./pages/Login"
 import Register from "./pages/Register"
-import AdminDashboard from "./pages/admin/Dashboard"
 import ResponsableDashboard from "./pages/responsable/Dashboard"
 import WorkerDashboard from "./pages/worker/Dashboard"
 import NotFound from "./pages/NotFound"
@@ -17,6 +16,7 @@ import WorkerTests from "./pages/worker/Tests"
 import WorkerTrainings from "./pages/worker/Trainings"
 import WorkerComplaints from "./pages/worker/Complaints"
 import WorkerMessages from "./pages/worker/Messages"
+import WorkerJobs from "./pages/worker/Jobs"
 
 // Pages Responsable
 import ResponsableTests from "./pages/responsable/Tests"
@@ -24,6 +24,8 @@ import ResponsableCandidates from "./pages/responsable/Candidates"
 import ResponsableTrainings from "./pages/responsable/Trainings"
 import ResponsableMessages from "./pages/responsable/Messages"
 import CreateTest from "./pages/responsable/CreateTest"
+import TestAssignmentImproved from "./pages/responsable/test-assignment-improved"
+import CandidatesEnhanced from "./pages/responsable/candidates-enhanced"
 
 // Pages Admin
 import AdminUsers from "./pages/admin/Users"
@@ -51,7 +53,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   if (!allowedRoles.includes(currentUser.role)) {
     // Rediriger vers le tableau de bord approprié en fonction du rôle
     if (currentUser.role === "admin") {
-      return <Navigate to="/admin/dashboard" />
+      return <Navigate to="/admin/statistics" />
     } else if (currentUser.role === "responsable") {
       return <Navigate to="/responsable/dashboard" />
     } else {
@@ -75,10 +77,10 @@ function App() {
 
             {/* Admin Routes */}
             <Route
-              path="/admin/dashboard"
+              path="/admin/statistics"
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
-                  <AdminDashboard />
+                  <AdminStatistics />
                 </ProtectedRoute>
               }
             />
@@ -111,14 +113,6 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <AdminTestResults />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/statistics"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <AdminStatistics />
                 </ProtectedRoute>
               }
             />
@@ -165,6 +159,14 @@ function App() {
               }
             />
             <Route
+              path="/responsable/create-test/:id"
+              element={
+                <ProtectedRoute allowedRoles={["responsable"]}>
+                  <CreateTest />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/responsable/trainings"
               element={
                 <ProtectedRoute allowedRoles={["responsable"]}>
@@ -177,6 +179,22 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["responsable"]}>
                   <ResponsableMessages />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/responsable/test-assignment"
+              element={
+                <ProtectedRoute allowedRoles={["responsable"]}>
+                  <TestAssignmentImproved />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/responsable/candidates-enhanced"
+              element={
+                <ProtectedRoute allowedRoles={["responsable"]}>
+                  <CandidatesEnhanced />
                 </ProtectedRoute>
               }
             />
@@ -219,6 +237,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["worker"]}>
                   <WorkerTrainings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/worker/jobs"
+              element={
+                <ProtectedRoute allowedRoles={["worker"]}>
+                  <WorkerJobs />
                 </ProtectedRoute>
               }
             />

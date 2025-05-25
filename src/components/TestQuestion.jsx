@@ -1,18 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
-function TestQuestion({ question, onAnswer }) {
-  const [selectedOption, setSelectedOption] = useState(null)
+function TestQuestion({ question, onAnswer, selectedAnswer }) {
+  const [selectedOption, setSelectedOption] = useState(selectedAnswer || "")
+
+  useEffect(() => {
+    setSelectedOption(selectedAnswer || "")
+  }, [selectedAnswer, question._id])
 
   const handleOptionSelect = (optionId) => {
     setSelectedOption(optionId)
-  }
-
-  const handleSubmit = () => {
-    if (selectedOption !== null) {
-      onAnswer(question._id, selectedOption)
-    }
+    onAnswer(question._id, optionId)
   }
 
   return (
@@ -37,10 +36,6 @@ function TestQuestion({ question, onAnswer }) {
           </div>
         ))}
       </div>
-
-      <button className="btn btn-primary" onClick={handleSubmit} disabled={selectedOption === null}>
-        Confirmer
-      </button>
     </div>
   )
 }

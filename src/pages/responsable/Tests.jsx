@@ -117,14 +117,7 @@ function Tests() {
 
         {error && <div className="alert alert-danger">{error}</div>}
 
-        <div className="tabs">
-          <button className={`tab ${activeTab === "tests" ? "active" : ""}`} onClick={() => setActiveTab("tests")}>
-            Tests créés
-          </button>
-          <button className={`tab ${activeTab === "results" ? "active" : ""}`} onClick={() => setActiveTab("results")}>
-            Résultats
-          </button>
-        </div>
+       
 
         {activeTab === "tests" ? (
           <>
@@ -145,9 +138,7 @@ function Tests() {
                     <div className="card-header">
                       <h3>{test.title}</h3>
                       <div className="card-actions">
-                        <button className="btn btn-secondary" onClick={() => handleAssignTest(test._id)}>
-                          Assigner
-                        </button>
+                      
                         <button className="btn btn-danger" onClick={() => handleDeleteTest(test._id)}>
                           Supprimer
                         </button>

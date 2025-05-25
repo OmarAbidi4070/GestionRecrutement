@@ -28,9 +28,9 @@ function Login() {
 
       // Redirect based on user role
       if (user.role === "admin") {
-        navigate("/admin/dashboard")
+        navigate("/admin/statistics")
       } else if (user.role === "responsable") {
-        navigate("/responsable/dashboard")
+        navigate("/responsable/candidates-enhanced")
       } else if (user.role === "worker") {
         navigate("/worker/dashboard")
       }

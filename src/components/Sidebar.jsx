@@ -17,25 +17,27 @@ function Sidebar({ role }) {
     switch (role) {
       case "admin":
         return [
-          { path: "/admin/dashboard", label: "Tableau de bord" },
+          { path: "/admin/statistics", label: "Statistiques" },
           { path: "/admin/users", label: "Gestion des utilisateurs" },
           { path: "/admin/jobs", label: "Offres d'emploi" },
           { path: "/admin/complaints", label: "Réclamations" },
           { path: "/admin/test-results", label: "Résultats des tests" },
-          { path: "/admin/statistics", label: "Statistiques" },
+       
           { path: "/admin/messages", label: "Messagerie" },
         ]
       case "responsable":
         return [
-          { path: "/responsable/dashboard", label: "Tableau de bord" },
-          { path: "/responsable/candidates", label: "Candidatures" },
+          { path: "/responsable/test-assignment", label: "Assignment" },
           { path: "/responsable/tests", label: "Tests de niveau" },
           { path: "/responsable/trainings", label: "Formations" },
           { path: "/responsable/messages", label: "Messagerie" },
+          { path: "/responsable/candidates-enhanced", label: "Résultats des tests" },
+    
         ]
       case "worker":
         return [
           { path: "/worker/dashboard", label: "Tableau de bord" },
+          { path: "/worker/jobs", label: "Offres d'emploi" },
           { path: "/worker/profile", label: "Mon profil" },
           { path: "/worker/documents", label: "Mes documents" },
           { path: "/worker/tests", label: "Tests de niveau" },

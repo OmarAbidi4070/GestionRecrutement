@@ -160,7 +160,7 @@ function TestResults() {
                       <th>Score</th>
                       <th>Date</th>
                       <th>Statut</th>
-                      <th>Actions</th>
+               
                     </tr>
                   </thead>
                   <tbody>
@@ -179,11 +179,7 @@ function TestResults() {
                             <span className="badge badge-danger">Échoué</span>
                           )}
                         </td>
-                        <td>
-                          <button className="btn btn-primary btn-sm" onClick={() => handleViewResult(result)}>
-                            Voir détails
-                          </button>
-                        </td>
+                       
                       </tr>
                     ))}
                   </tbody>

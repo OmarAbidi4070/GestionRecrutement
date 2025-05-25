@@ -26,7 +26,7 @@ function DocumentUpload({ documentType, onUploadSuccess }) {
     }
 
     // Check file type
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"]
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
     if (!allowedTypes.includes(file.type)) {
       return setError("Type de fichier non supporté (PDF, JPEG, PNG uniquement)")
     }
@@ -36,12 +36,17 @@ function DocumentUpload({ documentType, onUploadSuccess }) {
       setProgress(0)
 
       const formData = new FormData()
+      // CORRECTION: utiliser "document" au lieu de "file"
       formData.append("document", file)
       formData.append("type", documentType)
+
+      // Ajouter le token d'authentification
+      const token = localStorage.getItem("token")
 
       const response = await axios.post("/api/worker/upload-document", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`,
         },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -50,7 +55,8 @@ function DocumentUpload({ documentType, onUploadSuccess }) {
       })
 
       setUploading(false)
-      onUploadSuccess(response.data)
+      setFile(null) // Reset file input
+      onUploadSuccess(response.data.document)
     } catch (err) {
       setError(err.response?.data?.message || "Erreur lors du téléchargement")
       setUploading(false)
@@ -68,6 +74,7 @@ function DocumentUpload({ documentType, onUploadSuccess }) {
           className="form-control"
           onChange={handleFileChange}
           disabled={uploading}
+          accept=".pdf,.jpg,.jpeg,.png"
         />
         <small className="text-muted">Formats acceptés: PDF, JPEG, PNG (max 5MB)</small>
       </div>

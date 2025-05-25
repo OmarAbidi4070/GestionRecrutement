@@ -33,6 +33,13 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ["admin", "responsable", "worker"], required: true },
   status: { type: String, enum: ["pending", "active", "rejected"], default: "pending" },
+  phone: { type: String },
+  address: { type: String },
+  city: { type: String },
+  country: { type: String },
+  birthDate: { type: Date },
+  education: { type: String },
+  skills: { type: String },
   createdAt: { type: Date, default: Date.now },
 })
 
@@ -67,8 +74,8 @@ const TestSchema = new mongoose.Schema({
 const TestResultSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   testId: { type: mongoose.Schema.Types.ObjectId, ref: "Test", required: true },
-  score: { type: Number, required: true },
-  passed: { type: Boolean, required: true },
+  score: { type: Number, default: 0 },
+  passed: { type: Boolean, default: false },
   answers: [
     {
       questionId: { type: String, required: true },
@@ -76,24 +83,35 @@ const TestResultSchema = new mongoose.Schema({
       isCorrect: { type: Boolean, required: true },
     },
   ],
-  completedAt: { type: Date, default: Date.now },
+  completedAt: { type: Date },
   startedAt: { type: Date },
-  status: { type: String },
+  status: { type: String, default: "assigned" }, // assigned, started, completed
 })
 
 const TrainingSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
   content: { type: String, required: true },
-  duration: { type: Number, required: true }, // en minutes
+  duration: { type: Number, required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   createdAt: { type: Date, default: Date.now },
 })
 
+const TrainingAttachmentSchema = new mongoose.Schema({
+  trainingId: { type: mongoose.Schema.Types.ObjectId, ref: "Training", required: true },
+  originalName: { type: String, required: true },
+  filename: { type: String, required: true },
+  filePath: { type: String, required: true },
+  fileSize: { type: String, required: true },
+  uploadedAt: { type: Date, default: Date.now },
+})
+
+const TrainingAttachment = mongoose.model("TrainingAttachment", TrainingAttachmentSchema)
+
 const TrainingProgressSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   trainingId: { type: mongoose.Schema.Types.ObjectId, ref: "Training", required: true },
-  progress: { type: Number, default: 0 }, // pourcentage
+  progress: { type: Number, default: 0 },
   completed: { type: Boolean, default: false },
   startedAt: { type: Date, default: Date.now },
   completedAt: { type: Date },
@@ -108,6 +126,18 @@ const JobSchema = new mongoose.Schema({
   status: { type: String, enum: ["open", "closed"], default: "open" },
   createdAt: { type: Date, default: Date.now },
 })
+
+const JobApplicationSchema = new mongoose.Schema({
+  jobId: { type: mongoose.Schema.Types.ObjectId, ref: "Job", required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  coverLetter: { type: String, required: true },
+  status: { type: String, enum: ["pending", "accepted", "rejected", "assigned"], default: "pending" },
+  appliedAt: { type: Date, default: Date.now },
+  reviewedAt: { type: Date },
+  reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+})
+
+const JobApplication = mongoose.model("JobApplication", JobApplicationSchema)
 
 const ComplaintSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -152,7 +182,20 @@ const storage = multer.diskStorage({
   },
 })
 
-const upload = multer({ storage })
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error("Type de fichier non supporté"), false)
+    }
+  },
+})
 
 // Middleware d'authentification
 const authenticateToken = (req, res, next) => {
@@ -203,36 +246,31 @@ const createDefaultAdmin = async () => {
   }
 }
 
-// Appel de la fonction pour créer l'admin par défaut
 createDefaultAdmin()
 
-// Routes d'authentification - CORRECTION: Ajout du segment /auth/ dans les routes
+// ==================== ROUTES D'AUTHENTIFICATION ====================
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { firstName, lastName, email, password, role } = req.body
 
-    // Vérifier si l'utilisateur existe déjà
     const userExists = await User.findOne({ email })
     if (userExists) {
       return res.status(400).json({ message: "Cet email est déjà utilisé" })
     }
 
-    // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // Créer un nouvel utilisateur
     const user = new User({
       firstName,
       lastName,
       email,
       password: hashedPassword,
       role,
-      // Activer automatiquement les travailleurs, mais pas les responsables
       status: role === "worker" ? "active" : "pending",
     })
 
     await user.save()
-
     res.status(201).json({ message: "Utilisateur enregistré avec succès" })
   } catch (error) {
     console.error(error)
@@ -240,30 +278,24 @@ app.post("/api/auth/register", async (req, res) => {
   }
 })
 
-// Corriger le problème de connexion du responsable
-// Dans la route de login, assurez-vous que le rôle "responsable" est correctement géré
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body
 
-    // Vérifier si l'utilisateur existe
     const user = await User.findOne({ email })
     if (!user) {
       return res.status(400).json({ message: "Email ou mot de passe incorrect" })
     }
 
-    // Vérifier si le compte est actif
     if (user.status !== "active") {
       return res.status(403).json({ message: "Votre compte est en attente d'approbation ou a été rejeté" })
     }
 
-    // Vérifier le mot de passe
     const validPassword = await bcrypt.compare(password, user.password)
     if (!validPassword) {
       return res.status(400).json({ message: "Email ou mot de passe incorrect" })
     }
 
-    // Créer et signer le token JWT
     const token = jwt.sign({ id: user._id, role: user.role, email: user.email }, "SECRET_KEY", { expiresIn: "24h" })
 
     res.status(200).json({
@@ -282,7 +314,6 @@ app.post("/api/auth/login", async (req, res) => {
   }
 })
 
-// Ajouter la route /api/auth/me pour vérifier l'authentification
 app.get("/api/auth/me", authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password")
@@ -296,7 +327,8 @@ app.get("/api/auth/me", authenticateToken, async (req, res) => {
   }
 })
 
-// Routes pour les workers
+// ==================== ROUTES POUR LES WORKERS ====================
+
 app.get("/api/worker/profile", authenticateToken, authorize(["worker"]), async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password")
@@ -310,67 +342,117 @@ app.get("/api/worker/profile", authenticateToken, authorize(["worker"]), async (
   }
 })
 
-app.put("/api/worker/profile", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const { firstName, lastName, email } = req.body
+// Route pour mettre à jour le profil (POST et PUT)
+app
+  .route("/api/worker/profile")
+  .post(authenticateToken, authorize(["worker"]), async (req, res) => {
+    try {
+      const updateData = req.body
 
-    const user = await User.findById(req.user.id)
-    if (!user) {
-      return res.status(404).json({ message: "Utilisateur non trouvé" })
+      const user = await User.findById(req.user.id)
+      if (!user) {
+        return res.status(404).json({ message: "Utilisateur non trouvé" })
+      }
+
+      Object.keys(updateData).forEach((key) => {
+        if (key !== "email" && updateData[key] !== undefined) {
+          user[key] = updateData[key]
+        }
+      })
+
+      await user.save()
+
+      res.status(200).json({
+        message: "Profil mis à jour avec succès",
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
+      })
+    } catch (error) {
+      console.error(error)
+      res.status(500).json({ message: "Erreur serveur" })
+    }
+  })
+  .put(authenticateToken, authorize(["worker"]), async (req, res) => {
+    try {
+      const updateData = req.body
+
+      const user = await User.findById(req.user.id)
+      if (!user) {
+        return res.status(404).json({ message: "Utilisateur non trouvé" })
+      }
+
+      Object.keys(updateData).forEach((key) => {
+        if (key !== "email" && updateData[key] !== undefined) {
+          user[key] = updateData[key]
+        }
+      })
+
+      await user.save()
+
+      res.status(200).json({
+        message: "Profil mis à jour avec succès",
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
+      })
+    } catch (error) {
+      console.error(error)
+      res.status(500).json({ message: "Erreur serveur" })
+    }
+  })
+
+// Route pour l'upload de documents
+app.post("/api/worker/upload-document", authenticateToken, authorize(["worker"]), (req, res) => {
+  upload.single("document")(req, res, async (err) => {
+    if (err) {
+      console.error("Upload error:", err)
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ message: "Le fichier est trop volumineux (max 5MB)" })
+      }
+      return res.status(400).json({ message: err.message || "Erreur lors du téléchargement" })
     }
 
-    user.firstName = firstName || user.firstName
-    user.lastName = lastName || user.lastName
-    user.email = email || user.email
+    try {
+      const { type } = req.body
 
-    await user.save()
+      if (!req.file) {
+        return res.status(400).json({ message: "Aucun fichier téléchargé" })
+      }
 
-    res.status(200).json({
-      message: "Profil mis à jour avec succès",
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-      },
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
+      const document = new Document({
+        userId: req.user.id,
+        title: type || "Document",
+        filePath: req.file.path,
+        fileType: req.file.mimetype,
+        status: "pending",
+      })
 
-app.post("/api/worker/documents", authenticateToken, authorize(["worker"]), upload.single("file"), async (req, res) => {
-  try {
-    const { title } = req.body
+      await document.save()
 
-    if (!req.file) {
-      return res.status(400).json({ message: "Aucun fichier téléchargé" })
+      res.status(201).json({
+        message: "Document téléchargé avec succès",
+        document: {
+          _id: document._id,
+          type: document.title,
+          filename: req.file.originalname,
+          status: document.status,
+          createdAt: document.uploadedAt,
+        },
+      })
+    } catch (error) {
+      console.error("Database error:", error)
+      res.status(500).json({ message: "Erreur serveur" })
     }
-
-    const document = new Document({
-      userId: req.user.id,
-      title,
-      filePath: req.file.path,
-      fileType: req.file.mimetype,
-    })
-
-    await document.save()
-
-    res.status(201).json({
-      message: "Document téléchargé avec succès",
-      document: {
-        id: document._id,
-        title: document.title,
-        status: document.status,
-        uploadedAt: document.uploadedAt,
-      },
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
+  })
 })
 
 app.get("/api/worker/documents", authenticateToken, authorize(["worker"]), async (req, res) => {
@@ -383,15 +465,248 @@ app.get("/api/worker/documents", authenticateToken, authorize(["worker"]), async
   }
 })
 
+// Route pour le statut du profil du worker
+app.get("/api/worker/profile-status", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    const documents = await Document.find({ userId })
+    const documentsSubmitted = documents.length > 0
+    const documentsVerified = documents.length > 0 && documents.every((doc) => doc.status === "approved")
+
+    const testAssignment = await TestResult.findOne({
+      userId,
+      status: { $in: ["assigned", "started"] },
+    })
+    const testAssigned = !!testAssignment
+
+    const completedTest = await TestResult.findOne({ userId, status: "completed" })
+    const testCompleted = !!completedTest
+    const testPassed = completedTest ? completedTest.passed : false
+
+    const trainingProgress = await TrainingProgress.findOne({ userId })
+    const trainingAssigned = !!trainingProgress
+
+    const jobAssigned = false
+
+    const profileStatus = {
+      documentsSubmitted,
+      documentsVerified,
+      testAssigned,
+      testCompleted,
+      testPassed,
+      trainingAssigned,
+      jobAssigned,
+    }
+
+    res.status(200).json(profileStatus)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour les notifications du worker
+app.get("/api/worker/notifications", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const userId = req.user.id
+    const notifications = []
+
+    const documents = await Document.find({ userId })
+    const testResults = await TestResult.find({ userId, status: "completed" })
+
+    documents.forEach((doc) => {
+      if (doc.status === "approved") {
+        notifications.push({
+          message: `Votre document "${doc.title}" a été approuvé`,
+          date: doc.uploadedAt,
+          type: "success",
+        })
+      } else if (doc.status === "rejected") {
+        notifications.push({
+          message: `Votre document "${doc.title}" a été rejeté`,
+          date: doc.uploadedAt,
+          type: "error",
+        })
+      }
+    })
+
+    testResults.forEach((result) => {
+      if (result.passed) {
+        notifications.push({
+          message: `Félicitations ! Vous avez réussi votre test avec un score de ${result.score}%`,
+          date: result.completedAt,
+          type: "success",
+        })
+      } else {
+        notifications.push({
+          message: `Vous n'avez pas atteint le score minimum au test (${result.score}%). Une formation vous sera assignée.`,
+          date: result.completedAt,
+          type: "warning",
+        })
+      }
+    })
+
+    notifications.sort((a, b) => new Date(b.date) - new Date(a.date))
+    const recentNotifications = notifications.slice(0, 10)
+
+    res.status(200).json(recentNotifications)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour récupérer un test assigné - CORRECTION DE L'ERREUR 404
+app.get("/api/worker/assigned-test", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const testAssignment = await TestResult.findOne({
+      userId: req.user.id,
+      status: { $in: ["assigned", "started"] },
+    }).populate({
+      path: "testId",
+      select: "title description questions passingScore",
+    })
+
+    if (!testAssignment) {
+      return res.status(404).json({ message: "Aucun test assigné" })
+    }
+
+    const formattedTest = {
+      _id: testAssignment._id,
+      testId: {
+        _id: testAssignment.testId._id,
+        title: testAssignment.testId.title,
+        description: testAssignment.testId.description,
+        passingScore: testAssignment.testId.passingScore,
+        questions: testAssignment.testId.questions.map((q) => ({
+          _id: q._id,
+          text: q.text,
+          options: q.options.map((o) => ({
+            _id: o._id,
+            text: o.text,
+          })),
+        })),
+      },
+    }
+
+    res.json(formattedTest)
+  } catch (error) {
+    console.error("Get assigned test error:", error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Routes pour gérer les tests
+app.post("/api/worker/start-test/:id", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const testAssignment = await TestResult.findOne({
+      _id: req.params.id,
+      userId: req.user.id,
+    })
+
+    if (!testAssignment) {
+      return res.status(404).json({ message: "Test non trouvé" })
+    }
+
+    testAssignment.startedAt = new Date()
+    testAssignment.status = "started"
+    await testAssignment.save()
+
+    res.json({ message: "Test démarré avec succès" })
+  } catch (error) {
+    console.error("Start test error:", error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+app.post("/api/worker/submit-answer", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const { assignmentId, questionId, selectedOption } = req.body
+
+    const testAssignment = await TestResult.findOne({
+      _id: assignmentId,
+      userId: req.user.id,
+    })
+
+    if (!testAssignment) {
+      return res.status(404).json({ message: "Test non trouvé" })
+    }
+
+    const test = await Test.findById(testAssignment.testId)
+    const question = test.questions.id(questionId)
+
+    if (!question) {
+      return res.status(404).json({ message: "Question non trouvée" })
+    }
+
+    const option = question.options.id(selectedOption)
+    if (!option) {
+      return res.status(404).json({ message: "Option non trouvée" })
+    }
+
+    const answerIndex = testAssignment.answers.findIndex((a) => a.questionId === questionId)
+
+    if (answerIndex !== -1) {
+      testAssignment.answers[answerIndex].selectedOption = selectedOption
+      testAssignment.answers[answerIndex].isCorrect = option.isCorrect
+    } else {
+      testAssignment.answers.push({
+        questionId,
+        selectedOption,
+        isCorrect: option.isCorrect,
+      })
+    }
+
+    await testAssignment.save()
+    res.json({ message: "Réponse enregistrée avec succès" })
+  } catch (error) {
+    console.error("Submit answer error:", error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+app.post("/api/worker/complete-test/:id", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const testAssignment = await TestResult.findOne({
+      _id: req.params.id,
+      userId: req.user.id,
+    }).populate("testId")
+
+    if (!testAssignment) {
+      return res.status(404).json({ message: "Test non trouvé" })
+    }
+
+    const totalQuestions = testAssignment.testId.questions.length
+    const correctAnswers = testAssignment.answers.filter((a) => a.isCorrect).length
+    const score = Math.round((correctAnswers / totalQuestions) * 100)
+    const passed = score >= testAssignment.testId.passingScore
+
+    testAssignment.score = score
+    testAssignment.passed = passed
+    testAssignment.completedAt = new Date()
+    testAssignment.status = "completed"
+
+    await testAssignment.save()
+
+    res.json({
+      score,
+      passed,
+      correctAnswers,
+      totalQuestions,
+    })
+  } catch (error) {
+    console.error("Complete test error:", error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Routes pour les tests disponibles
 app.get("/api/worker/tests", authenticateToken, authorize(["worker"]), async (req, res) => {
   try {
-    // Récupérer tous les tests disponibles
     const tests = await Test.find().select("title description passingScore")
-
-    // Récupérer les résultats de tests de l'utilisateur
     const results = await TestResult.find({ userId: req.user.id })
 
-    // Mapper les tests avec les résultats
     const testsWithResults = tests.map((test) => {
       const result = results.find((r) => r.testId.toString() === test._id.toString())
       return {
@@ -416,148 +731,31 @@ app.get("/api/worker/tests", authenticateToken, authorize(["worker"]), async (re
   }
 })
 
-app.get("/api/worker/tests/:id", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const test = await Test.findById(req.params.id)
-    if (!test) {
-      return res.status(404).json({ message: "Test non trouvé" })
-    }
-
-    // Vérifier si l'utilisateur a déjà passé ce test
-    const existingResult = await TestResult.findOne({
-      userId: req.user.id,
-      testId: test._id,
-    })
-
-    if (existingResult) {
-      return res.status(400).json({
-        message: "Vous avez déjà passé ce test",
-        result: {
-          score: existingResult.score,
-          passed: existingResult.passed,
-          completedAt: existingResult.completedAt,
-        },
-      })
-    }
-
-    // Retourner le test sans les réponses correctes
-    const testWithoutAnswers = {
-      id: test._id,
-      title: test.title,
-      description: test.description,
-      questions: test.questions.map((q) => ({
-        id: q._id,
-        text: q.text,
-        options: q.options.map((o) => ({
-          id: o._id,
-          text: o.text,
-        })),
-      })),
-    }
-
-    res.status(200).json(testWithoutAnswers)
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
-app.post("/api/worker/tests/:id/submit", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const { answers } = req.body
-
-    const test = await Test.findById(req.params.id)
-    if (!test) {
-      return res.status(404).json({ message: "Test non trouvé" })
-    }
-
-    // Vérifier si l'utilisateur a déjà passé ce test
-    const existingResult = await TestResult.findOne({
-      userId: req.user.id,
-      testId: test._id,
-    })
-
-    if (existingResult) {
-      return res.status(400).json({ message: "Vous avez déjà passé ce test" })
-    }
-
-    // Calculer le score
-    let correctAnswers = 0
-    const processedAnswers = []
-
-    answers.forEach((answer) => {
-      const question = test.questions.id(answer.questionId)
-      if (!question) return
-
-      const selectedOption = question.options.id(answer.selectedOptionId)
-      if (!selectedOption) return
-
-      const isCorrect = selectedOption.isCorrect
-      if (isCorrect) correctAnswers++
-
-      processedAnswers.push({
-        questionId: answer.questionId,
-        selectedOption: answer.selectedOptionId,
-        isCorrect,
-      })
-    })
-
-    const totalQuestions = test.questions.length
-    const score = Math.round((correctAnswers / totalQuestions) * 100)
-    const passed = score >= test.passingScore
-
-    // Enregistrer le résultat
-    const result = new TestResult({
-      userId: req.user.id,
-      testId: test._id,
-      score,
-      passed,
-      answers: processedAnswers,
-    })
-
-    await result.save()
-
-    res.status(200).json({
-      message: "Test soumis avec succès",
-      result: {
-        score,
-        passed,
-        correctAnswers,
-        totalQuestions,
-      },
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
+// Routes pour les formations
 app.get("/api/worker/trainings", authenticateToken, authorize(["worker"]), async (req, res) => {
   try {
-    // Récupérer toutes les formations disponibles
-    const trainings = await Training.find().select("title description duration")
+    const progress = await TrainingProgress.find({ userId: req.user.id }).populate("trainingId")
 
-    // Récupérer les progrès de l'utilisateur
-    const progress = await TrainingProgress.find({ userId: req.user.id })
+    const trainingsWithProgress = await Promise.all(
+      progress.map(async (userProgress) => {
+        const attachments = await TrainingAttachment.find({ trainingId: userProgress.trainingId._id })
 
-    // Mapper les formations avec les progrès
-    const trainingsWithProgress = trainings.map((training) => {
-      const userProgress = progress.find((p) => p.trainingId.toString() === training._id.toString())
-      return {
-        id: training._id,
-        title: training.title,
-        description: training.description,
-        duration: training.duration,
-        progress: userProgress
-          ? {
-              percentage: userProgress.progress,
-              completed: userProgress.completed,
-              startedAt: userProgress.startedAt,
-              completedAt: userProgress.completedAt,
-            }
-          : null,
-      }
-    })
+        return {
+          id: userProgress.trainingId._id,
+          title: userProgress.trainingId.title,
+          description: userProgress.trainingId.description,
+          duration: userProgress.trainingId.duration,
+          content: userProgress.trainingId.content,
+          attachments: attachments,
+          progress: {
+            percentage: userProgress.progress,
+            completed: userProgress.completed,
+            startedAt: userProgress.startedAt,
+            completedAt: userProgress.completedAt,
+          },
+        }
+      }),
+    )
 
     res.status(200).json(trainingsWithProgress)
   } catch (error) {
@@ -573,13 +771,11 @@ app.get("/api/worker/trainings/:id", authenticateToken, authorize(["worker"]), a
       return res.status(404).json({ message: "Formation non trouvée" })
     }
 
-    // Récupérer les progrès de l'utilisateur pour cette formation
     let userProgress = await TrainingProgress.findOne({
       userId: req.user.id,
       trainingId: training._id,
     })
 
-    // Si aucun progrès n'existe, créer une nouvelle entrée
     if (!userProgress) {
       userProgress = new TrainingProgress({
         userId: req.user.id,
@@ -588,12 +784,15 @@ app.get("/api/worker/trainings/:id", authenticateToken, authorize(["worker"]), a
       await userProgress.save()
     }
 
+    const attachments = await TrainingAttachment.find({ trainingId: training._id })
+
     res.status(200).json({
       id: training._id,
       title: training.title,
       description: training.description,
       content: training.content,
       duration: training.duration,
+      attachments: attachments,
       progress: {
         percentage: userProgress.progress,
         completed: userProgress.completed,
@@ -630,7 +829,6 @@ app.put("/api/worker/trainings/:id/progress", authenticateToken, authorize(["wor
 
     userProgress.progress = progress
 
-    // Si la formation est terminée
     if (progress >= 100) {
       userProgress.completed = true
       userProgress.completedAt = Date.now()
@@ -653,6 +851,7 @@ app.put("/api/worker/trainings/:id/progress", authenticateToken, authorize(["wor
   }
 })
 
+// Routes pour les réclamations
 app.post("/api/worker/complaints", authenticateToken, authorize(["worker"]), async (req, res) => {
   try {
     const { subject, description } = req.body
@@ -690,174 +889,14 @@ app.get("/api/worker/complaints", authenticateToken, authorize(["worker"]), asyn
   }
 })
 
-// Ajouter la route manquante pour les tests assignés
-app.get("/api/worker/assigned-test", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    // Rechercher un test assigné à l'utilisateur
-    const testAssignment = await TestResult.findOne({
-      userId: req.user.id,
-      status: { $exists: false }, // Tests qui n'ont pas encore été complétés
-    }).populate({
-      path: "testId",
-      select: "title description questions passingScore",
-    })
+// ==================== ROUTES POUR LES RESPONSABLES ====================
 
-    if (!testAssignment) {
-      return res.status(404).json({ message: "Aucun test assigné" })
-    }
-
-    // Formater la réponse pour ne pas inclure les réponses correctes
-    const formattedTest = {
-      _id: testAssignment._id,
-      testId: {
-        _id: testAssignment.testId._id,
-        title: testAssignment.testId.title,
-        description: testAssignment.testId.description,
-        passingScore: testAssignment.testId.passingScore,
-        questions: testAssignment.testId.questions.map((q) => ({
-          _id: q._id,
-          text: q.text,
-          options: q.options.map((o) => ({
-            _id: o._id,
-            text: o.text,
-          })),
-        })),
-      },
-    }
-
-    res.json(formattedTest)
-  } catch (error) {
-    console.error("Get assigned test error:", error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
-// Ajouter les routes pour gérer les tests et les résultats
-app.post("/api/worker/start-test/:id", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const testAssignment = await TestResult.findOne({
-      _id: req.params.id,
-      userId: req.user.id,
-    })
-
-    if (!testAssignment) {
-      return res.status(404).json({ message: "Test non trouvé" })
-    }
-
-    testAssignment.startedAt = new Date()
-    await testAssignment.save()
-
-    res.json({ message: "Test démarré avec succès" })
-  } catch (error) {
-    console.error("Start test error:", error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
-app.post("/api/worker/submit-answer", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const { assignmentId, questionId, selectedOption } = req.body
-
-    const testAssignment = await TestResult.findOne({
-      _id: assignmentId,
-      userId: req.user.id,
-    })
-
-    if (!testAssignment) {
-      return res.status(404).json({ message: "Test non trouvé" })
-    }
-
-    // Vérifier si la question existe dans le test
-    const test = await Test.findById(testAssignment.testId)
-    const question = test.questions.id(questionId)
-
-    if (!question) {
-      return res.status(404).json({ message: "Question non trouvée" })
-    }
-
-    // Vérifier si l'option sélectionnée est correcte
-    const option = question.options.id(selectedOption)
-    if (!option) {
-      return res.status(404).json({ message: "Option non trouvée" })
-    }
-
-    // Ajouter ou mettre à jour la réponse
-    const answerIndex = testAssignment.answers.findIndex((a) => a.questionId === questionId)
-
-    if (answerIndex !== -1) {
-      testAssignment.answers[answerIndex].selectedOption = selectedOption
-      testAssignment.answers[answerIndex].isCorrect = option.isCorrect
-    } else {
-      testAssignment.answers.push({
-        questionId,
-        selectedOption,
-        isCorrect: option.isCorrect,
-      })
-    }
-
-    await testAssignment.save()
-
-    res.json({ message: "Réponse enregistrée avec succès" })
-  } catch (error) {
-    console.error("Submit answer error:", error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
-app.post("/api/worker/complete-test/:id", authenticateToken, authorize(["worker"]), async (req, res) => {
-  try {
-    const testAssignment = await TestResult.findOne({
-      _id: req.params.id,
-      userId: req.user.id,
-    }).populate("testId")
-
-    if (!testAssignment) {
-      return res.status(404).json({ message: "Test non trouvé" })
-    }
-
-    // Calculer le score
-    const totalQuestions = testAssignment.testId.questions.length
-    const correctAnswers = testAssignment.answers.filter((a) => a.isCorrect).length
-    const score = Math.round((correctAnswers / totalQuestions) * 100)
-    const passed = score >= testAssignment.testId.passingScore
-
-    // Mettre à jour le résultat du test
-    testAssignment.score = score
-    testAssignment.passed = passed
-    testAssignment.completedAt = new Date()
-    testAssignment.status = "completed"
-
-    await testAssignment.save()
-
-    // Notifier le responsable (dans un système réel, on pourrait envoyer un email ou une notification)
-    // Pour l'instant, nous allons simplement enregistrer un message dans la console
-    console.log(`Test complété par l'utilisateur ${req.user.id} avec un score de ${score}%`)
-
-    res.json({
-      score,
-      passed,
-      correctAnswers,
-      totalQuestions,
-    })
-  } catch (error) {
-    console.error("Complete test error:", error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
-})
-
-// Routes pour les responsables
 app.get("/api/responsable/dashboard", authenticateToken, authorize(["responsable"]), async (req, res) => {
   try {
-    // Nombre de candidats en attente
     const pendingUsers = await User.countDocuments({ role: "worker", status: "pending" })
-
-    // Nombre de documents en attente de vérification
     const pendingDocuments = await Document.countDocuments({ status: "pending" })
-
-    // Nombre de tests créés par ce responsable
     const tests = await Test.countDocuments({ createdBy: req.user.id })
 
-    // Résultats récents des tests
     const recentResults = await TestResult.find()
       .sort({ completedAt: -1 })
       .limit(5)
@@ -941,12 +980,29 @@ app.get("/api/responsable/tests", authenticateToken, authorize(["responsable"]),
   }
 })
 
-// Améliorer la route de création de test pour le responsable
+// CORRECTION DE L'ERREUR 404 - Route GET pour un test spécifique
+app.get("/api/responsable/tests/:id", authenticateToken, authorize(["responsable"]), async (req, res) => {
+  try {
+    const test = await Test.findOne({
+      _id: req.params.id,
+      createdBy: req.user.id,
+    })
+
+    if (!test) {
+      return res.status(404).json({ message: "Test non trouvé" })
+    }
+
+    res.status(200).json(test)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
 app.post("/api/responsable/tests", authenticateToken, authorize(["responsable"]), async (req, res) => {
   try {
     const { title, description, passingScore, questions } = req.body
 
-    // Validation
     if (!title) {
       return res.status(400).json({ message: "Le titre du test est requis" })
     }
@@ -955,7 +1011,6 @@ app.post("/api/responsable/tests", authenticateToken, authorize(["responsable"])
       return res.status(400).json({ message: "Le test doit contenir au moins une question" })
     }
 
-    // Vérifier que chaque question a au moins une option correcte
     for (const question of questions) {
       if (!question.text) {
         return res.status(400).json({ message: "Chaque question doit avoir un texte" })
@@ -994,40 +1049,102 @@ app.post("/api/responsable/tests", authenticateToken, authorize(["responsable"])
   }
 })
 
-// Ajouter une route pour assigner un test à un travailleur
+// CORRECTION DE L'ERREUR 404 - Route PUT pour modifier un test
+app.put("/api/responsable/tests/:id", authenticateToken, authorize(["responsable"]), async (req, res) => {
+  try {
+    const { title, description, passingScore, questions } = req.body
+
+    const test = await Test.findOne({
+      _id: req.params.id,
+      createdBy: req.user.id,
+    })
+
+    if (!test) {
+      return res.status(404).json({ message: "Test non trouvé ou vous n'êtes pas autorisé à le modifier" })
+    }
+
+    // Vérifier si le test a déjà été assigné
+    const resultsExist = await TestResult.exists({ testId: test._id })
+    if (resultsExist) {
+      return res.status(400).json({ message: "Ce test ne peut pas être modifié car des utilisateurs l'ont déjà passé" })
+    }
+
+    if (!title) {
+      return res.status(400).json({ message: "Le titre du test est requis" })
+    }
+
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ message: "Le test doit contenir au moins une question" })
+    }
+
+    for (const question of questions) {
+      if (!question.text) {
+        return res.status(400).json({ message: "Chaque question doit avoir un texte" })
+      }
+
+      if (!question.options || !Array.isArray(question.options) || question.options.length < 2) {
+        return res.status(400).json({ message: "Chaque question doit avoir au moins deux options" })
+      }
+
+      const hasCorrectOption = question.options.some((option) => option.isCorrect)
+      if (!hasCorrectOption) {
+        return res.status(400).json({ message: "Chaque question doit avoir au moins une option correcte" })
+      }
+    }
+
+    test.title = title
+    test.description = description
+    test.passingScore = passingScore || 50
+    test.questions = questions
+
+    await test.save()
+
+    res.status(200).json({
+      message: "Test modifié avec succès",
+      test: {
+        id: test._id,
+        title: test.title,
+        description: test.description,
+        passingScore: test.passingScore,
+        questions: test.questions,
+      },
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
 app.post("/api/responsable/assign-test", authenticateToken, authorize(["responsable"]), async (req, res) => {
   try {
     const { userId, testId } = req.body
 
-    // Vérifier si l'utilisateur existe et est un travailleur
     const user = await User.findOne({ _id: userId, role: "worker" })
     if (!user) {
       return res.status(404).json({ message: "Utilisateur non trouvé ou n'est pas un travailleur" })
     }
 
-    // Vérifier si le test existe
     const test = await Test.findById(testId)
     if (!test) {
       return res.status(404).json({ message: "Test non trouvé" })
     }
 
-    // Vérifier si l'utilisateur a déjà un test assigné non complété
     const existingAssignment = await TestResult.findOne({
       userId,
-      status: { $ne: "completed" },
+      status: { $in: ["assigned", "started"] },
     })
 
     if (existingAssignment) {
       return res.status(400).json({ message: "Cet utilisateur a déjà un test assigné" })
     }
 
-    // Créer une nouvelle assignation de test
     const testResult = new TestResult({
       userId,
       testId,
       score: 0,
       passed: false,
       answers: [],
+      status: "assigned",
     })
 
     await testResult.save()
@@ -1046,14 +1163,11 @@ app.post("/api/responsable/assign-test", authenticateToken, authorize(["responsa
   }
 })
 
-// Ajouter une route pour voir les résultats des tests
 app.get("/api/responsable/test-results", authenticateToken, authorize(["responsable"]), async (req, res) => {
   try {
-    // Récupérer les tests créés par ce responsable
     const tests = await Test.find({ createdBy: req.user.id }).select("_id")
     const testIds = tests.map((test) => test._id)
 
-    // Récupérer les résultats pour ces tests
     const results = await TestResult.find({
       testId: { $in: testIds },
       status: "completed",
@@ -1079,7 +1193,6 @@ app.delete("/api/responsable/tests/:id", authenticateToken, authorize(["responsa
       return res.status(404).json({ message: "Test non trouvé ou vous n'êtes pas autorisé à le supprimer" })
     }
 
-    // Vérifier si des résultats existent pour ce test
     const resultsExist = await TestResult.exists({ testId: test._id })
     if (resultsExist) {
       return res
@@ -1088,7 +1201,6 @@ app.delete("/api/responsable/tests/:id", authenticateToken, authorize(["responsa
     }
 
     await test.deleteOne()
-
     res.status(200).json({ message: "Test supprimé avec succès" })
   } catch (error) {
     console.error(error)
@@ -1096,6 +1208,7 @@ app.delete("/api/responsable/tests/:id", authenticateToken, authorize(["responsa
   }
 })
 
+// Routes pour les formations
 app.get("/api/responsable/trainings", authenticateToken, authorize(["responsable"]), async (req, res) => {
   try {
     const trainings = await Training.find({ createdBy: req.user.id })
@@ -1106,31 +1219,66 @@ app.get("/api/responsable/trainings", authenticateToken, authorize(["responsable
   }
 })
 
-app.post("/api/responsable/trainings", authenticateToken, authorize(["responsable"]), async (req, res) => {
-  try {
-    const { title, description, content, duration } = req.body
+app.post("/api/responsable/trainings", authenticateToken, authorize(["responsable"]), (req, res) => {
+  upload.array("attachments", 10)(req, res, async (err) => {
+    if (err) {
+      console.error("Upload error:", err)
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ message: "Un ou plusieurs fichiers sont trop volumineux (max 5MB chacun)" })
+      }
+      return res.status(400).json({ message: err.message || "Erreur lors du téléchargement" })
+    }
 
-    const training = new Training({
-      title,
-      description,
-      content,
-      duration,
-      createdBy: req.user.id,
-    })
+    try {
+      const { title, description, content, duration } = req.body
 
-    await training.save()
+      if (!title || !description || !content) {
+        return res.status(400).json({ message: "Tous les champs obligatoires doivent être remplis" })
+      }
 
-    res.status(201).json({
-      message: "Formation créée avec succès",
-      training: {
-        id: training._id,
-        title: training.title,
-      },
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ message: "Erreur serveur" })
-  }
+      const training = new Training({
+        title,
+        description,
+        content,
+        duration: Number.parseInt(duration) || 7,
+        createdBy: req.user.id,
+      })
+
+      await training.save()
+
+      // Sauvegarder les attachments s'il y en a
+      const attachments = []
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          const attachment = new TrainingAttachment({
+            trainingId: training._id,
+            originalName: file.originalname,
+            filename: file.filename,
+            filePath: file.path,
+            fileSize: file.size,
+          })
+          await attachment.save()
+          attachments.push(attachment)
+        }
+      }
+
+      res.status(201).json({
+        message: "Formation créée avec succès",
+        training: {
+          _id: training._id,
+          title: training.title,
+          description: training.description,
+          content: training.content,
+          duration: training.duration,
+          createdAt: training.createdAt,
+          attachments: attachments,
+        },
+      })
+    } catch (error) {
+      console.error("Erreur création formation:", error)
+      res.status(500).json({ message: "Erreur serveur lors de la création de la formation" })
+    }
+  })
 })
 
 app.delete("/api/responsable/trainings/:id", authenticateToken, authorize(["responsable"]), async (req, res) => {
@@ -1144,7 +1292,6 @@ app.delete("/api/responsable/trainings/:id", authenticateToken, authorize(["resp
       return res.status(404).json({ message: "Formation non trouvée ou vous n'êtes pas autorisé à la supprimer" })
     }
 
-    // Vérifier si des progrès existent pour cette formation
     const progressExists = await TrainingProgress.exists({ trainingId: training._id })
     if (progressExists) {
       return res
@@ -1153,7 +1300,6 @@ app.delete("/api/responsable/trainings/:id", authenticateToken, authorize(["resp
     }
 
     await training.deleteOne()
-
     res.status(200).json({ message: "Formation supprimée avec succès" })
   } catch (error) {
     console.error(error)
@@ -1161,22 +1307,106 @@ app.delete("/api/responsable/trainings/:id", authenticateToken, authorize(["resp
   }
 })
 
-// Routes pour les admins
+// Route pour récupérer les attachments d'une formation
+app.get("/api/training/:id/attachments", authenticateToken, async (req, res) => {
+  try {
+    const attachments = await TrainingAttachment.find({ trainingId: req.params.id })
+    res.status(200).json(attachments)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour télécharger un attachment
+app.get("/api/training/:trainingId/attachment/:attachmentId", authenticateToken, async (req, res) => {
+  try {
+    const attachment = await TrainingAttachment.findOne({
+      _id: req.params.attachmentId,
+      trainingId: req.params.trainingId,
+    })
+
+    if (!attachment) {
+      return res.status(404).json({ message: "Fichier non trouvé" })
+    }
+
+    res.download(attachment.filePath, attachment.originalName)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour que le responsable voie la progression des formations
+app.get("/api/responsable/training-progress", authenticateToken, authorize(["responsable"]), async (req, res) => {
+  try {
+    const trainings = await Training.find({ createdBy: req.user.id })
+    const trainingIds = trainings.map((t) => t._id)
+
+    const progressData = await TrainingProgress.find({ trainingId: { $in: trainingIds } })
+      .populate("userId", "firstName lastName email")
+      .populate("trainingId", "title")
+
+    res.status(200).json(progressData)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour assigner une formation
+app.post("/api/responsable/assign-training", authenticateToken, authorize(["responsable"]), async (req, res) => {
+  try {
+    const { userId, trainingId } = req.body
+
+    const user = await User.findOne({ _id: userId, role: "worker" })
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur non trouvé ou n'est pas un travailleur" })
+    }
+
+    const training = await Training.findById(trainingId)
+    if (!training) {
+      return res.status(404).json({ message: "Formation non trouvée" })
+    }
+
+    // Vérifier si l'utilisateur a déjà cette formation assignée
+    const existingProgress = await TrainingProgress.findOne({ userId, trainingId })
+    if (existingProgress) {
+      return res.status(400).json({ message: "Cette formation est déjà assignée à cet utilisateur" })
+    }
+
+    const trainingProgress = new TrainingProgress({
+      userId,
+      trainingId,
+      progress: 0,
+      completed: false,
+    })
+
+    await trainingProgress.save()
+
+    res.status(201).json({
+      message: "Formation assignée avec succès",
+      assignment: {
+        id: trainingProgress._id,
+        userId,
+        trainingId,
+      },
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// ==================== ROUTES POUR LES ADMINS ====================
+
 app.get("/api/admin/dashboard", authenticateToken, authorize(["admin"]), async (req, res) => {
   try {
-    // Nombre total d'utilisateurs par rôle
     const usersByRole = await User.aggregate([{ $group: { _id: "$role", count: { $sum: 1 } } }])
-
-    // Nombre d'utilisateurs en attente d'approbation
     const pendingUsers = await User.countDocuments({ status: "pending" })
-
-    // Nombre de réclamations non résolues
     const pendingComplaints = await Complaint.countDocuments({ status: "pending" })
-
-    // Statistiques des tests
     const testResults = await TestResult.aggregate([{ $group: { _id: "$passed", count: { $sum: 1 } } }])
 
-    // Utilisateurs récemment inscrits
     const recentUsers = await User.find()
       .sort({ createdAt: -1 })
       .limit(5)
@@ -1218,7 +1448,6 @@ app.put("/api/admin/users/:id/status", authenticateToken, authorize(["admin"]), 
       return res.status(404).json({ message: "Utilisateur non trouvé" })
     }
 
-    // Empêcher la modification du statut de l'admin par défaut
     if (user.email === "admin@gmail.com") {
       return res.status(403).json({ message: "Vous ne pouvez pas modifier le statut de l'administrateur par défaut" })
     }
@@ -1251,27 +1480,15 @@ app.delete("/api/admin/users/:id", authenticateToken, authorize(["admin"]), asyn
       return res.status(404).json({ message: "Utilisateur non trouvé" })
     }
 
-    // Empêcher la suppression de l'admin par défaut
     if (user.email === "admin@gmail.com") {
       return res.status(403).json({ message: "Vous ne pouvez pas supprimer l'administrateur par défaut" })
     }
 
-    // Supprimer les documents associés
     await Document.deleteMany({ userId: user._id })
-
-    // Supprimer les résultats de tests associés
     await TestResult.deleteMany({ userId: user._id })
-
-    // Supprimer les progrès de formation associés
     await TrainingProgress.deleteMany({ userId: user._id })
-
-    // Supprimer les réclamations associées
     await Complaint.deleteMany({ userId: user._id })
-
-    // Supprimer les messages associés
     await Message.deleteMany({ $or: [{ senderId: user._id }, { receiverId: user._id }] })
-
-    // Supprimer l'utilisateur
     await user.deleteOne()
 
     res.status(200).json({ message: "Utilisateur et données associées supprimés avec succès" })
@@ -1281,6 +1498,7 @@ app.delete("/api/admin/users/:id", authenticateToken, authorize(["admin"]), asyn
   }
 })
 
+// Routes pour les offres d'emploi
 app.get("/api/admin/jobs", authenticateToken, authorize(["admin"]), async (req, res) => {
   try {
     const jobs = await Job.find()
@@ -1359,7 +1577,6 @@ app.delete("/api/admin/jobs/:id", authenticateToken, authorize(["admin"]), async
     }
 
     await job.deleteOne()
-
     res.status(200).json({ message: "Offre d'emploi supprimée avec succès" })
   } catch (error) {
     console.error(error)
@@ -1367,10 +1584,155 @@ app.delete("/api/admin/jobs/:id", authenticateToken, authorize(["admin"]), async
   }
 })
 
+// ==================== ROUTES POUR LES CANDIDATURES ====================
+
+// Route pour que les workers voient les jobs disponibles
+app.get("/api/worker/jobs", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const jobs = await Job.find({ status: "open" })
+
+    // Récupérer les candidatures de l'utilisateur
+    const userApplications = await JobApplication.find({ userId: req.user.id })
+
+    // Ajouter l'information de candidature à chaque job
+    const jobsWithApplicationStatus = jobs.map((job) => {
+      const application = userApplications.find((app) => app.jobId.toString() === job._id.toString())
+      return {
+        ...job.toObject(),
+        hasApplied: !!application,
+        applicationStatus: application ? application.status : null,
+      }
+    })
+
+    res.status(200).json(jobsWithApplicationStatus)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour postuler à un job
+app.post("/api/worker/jobs/:jobId/apply", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const { coverLetter } = req.body
+    const jobId = req.params.jobId
+
+    // Vérifier que le job existe et est ouvert
+    const job = await Job.findOne({ _id: jobId, status: "open" })
+    if (!job) {
+      return res.status(404).json({ message: "Offre d'emploi non trouvée ou fermée" })
+    }
+
+    // Vérifier que l'utilisateur n'a pas déjà postulé
+    const existingApplication = await JobApplication.findOne({ jobId, userId: req.user.id })
+    if (existingApplication) {
+      return res.status(400).json({ message: "Vous avez déjà postulé à cette offre" })
+    }
+
+    const application = new JobApplication({
+      jobId,
+      userId: req.user.id,
+      coverLetter,
+    })
+
+    await application.save()
+
+    res.status(201).json({
+      message: "Candidature soumise avec succès",
+      application: {
+        id: application._id,
+        status: application.status,
+        appliedAt: application.appliedAt,
+      },
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour que les workers voient leurs candidatures
+app.get("/api/worker/applications", authenticateToken, authorize(["worker"]), async (req, res) => {
+  try {
+    const applications = await JobApplication.find({ userId: req.user.id })
+      .populate("jobId", "title location status")
+      .sort({ appliedAt: -1 })
+
+    res.status(200).json(applications)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour que l'admin voie toutes les candidatures
+app.get("/api/admin/applications", authenticateToken, authorize(["admin"]), async (req, res) => {
+  try {
+    const applications = await JobApplication.find()
+      .populate("userId", "firstName lastName email")
+      .populate("jobId", "title location")
+      .populate("reviewedBy", "firstName lastName")
+      .sort({ appliedAt: -1 })
+
+    res.status(200).json(applications)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour que l'admin voie les candidatures d'un job spécifique
+app.get("/api/admin/jobs/:jobId/applications", authenticateToken, authorize(["admin"]), async (req, res) => {
+  try {
+    const applications = await JobApplication.find({ jobId: req.params.jobId })
+      .populate("userId", "firstName lastName email phone")
+      .sort({ appliedAt: -1 })
+
+    res.status(200).json(applications)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour traiter une candidature (accepter/rejeter/assigner)
+app.put("/api/admin/applications/:id", authenticateToken, authorize(["admin"]), async (req, res) => {
+  try {
+    const { status } = req.body
+
+    if (!["pending", "accepted", "rejected", "assigned"].includes(status)) {
+      return res.status(400).json({ message: "Statut invalide" })
+    }
+
+    const application = await JobApplication.findById(req.params.id)
+    if (!application) {
+      return res.status(404).json({ message: "Candidature non trouvée" })
+    }
+
+    application.status = status
+    application.reviewedAt = new Date()
+    application.reviewedBy = req.user.id
+
+    await application.save()
+
+    res.status(200).json({
+      message: "Candidature mise à jour avec succès",
+      application: {
+        id: application._id,
+        status: application.status,
+        reviewedAt: application.reviewedAt,
+      },
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Routes pour les réclamations
 app.get("/api/admin/complaints", authenticateToken, authorize(["admin"]), async (req, res) => {
   try {
     const complaints = await Complaint.find().populate("userId", "firstName lastName email")
-
     res.status(200).json(complaints)
   } catch (error) {
     console.error(error)
@@ -1382,7 +1744,7 @@ app.put("/api/admin/complaints/:id", authenticateToken, authorize(["admin"]), as
   try {
     const { status, response } = req.body
 
-    if (!["pending", "in-progress", "resolved"].includes(status)) {
+    if (!["pending", "in-progress", "resolved", "rejected"].includes(status)) {
       return res.status(400).json({ message: "Statut invalide" })
     }
 
@@ -1394,7 +1756,7 @@ app.put("/api/admin/complaints/:id", authenticateToken, authorize(["admin"]), as
     complaint.status = status
     complaint.response = response || complaint.response
 
-    if (status === "resolved") {
+    if (status === "resolved" || status === "rejected") {
       complaint.resolvedAt = Date.now()
     }
 
@@ -1402,6 +1764,45 @@ app.put("/api/admin/complaints/:id", authenticateToken, authorize(["admin"]), as
 
     res.status(200).json({
       message: "Réclamation mise à jour avec succès",
+      complaint: {
+        id: complaint._id,
+        subject: complaint.subject,
+        status: complaint.status,
+        response: complaint.response,
+        resolvedAt: complaint.resolvedAt,
+      },
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
+// Route pour répondre aux réclamations (POST)
+app.post("/api/admin/complaints/:id/respond", authenticateToken, authorize(["admin"]), async (req, res) => {
+  try {
+    const { status, response } = req.body
+
+    if (!["pending", "in-progress", "resolved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Statut invalide" })
+    }
+
+    const complaint = await Complaint.findById(req.params.id)
+    if (!complaint) {
+      return res.status(404).json({ message: "Réclamation non trouvée" })
+    }
+
+    complaint.status = status
+    complaint.response = response || complaint.response
+
+    if (status === "resolved" || status === "rejected") {
+      complaint.resolvedAt = Date.now()
+    }
+
+    await complaint.save()
+
+    res.status(200).json({
+      message: "Réclamation traitée avec succès",
       complaint: {
         id: complaint._id,
         subject: complaint.subject,
@@ -1452,12 +1853,43 @@ app.get("/api/admin/statistics", authenticateToken, authorize(["admin"]), async 
     // Statistiques des documents
     const documentStats = await Document.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }])
 
+    // Statistiques détaillées
+    const totalUsers = await User.countDocuments()
+    const activeUsers = await User.countDocuments({ status: "active" })
+    const totalTests = await Test.countDocuments()
+    const totalTrainings = await Training.countDocuments()
+    const totalMessages = await Message.countDocuments()
+
+    // Activité récente
+    const recentActivity = {
+      newUsersThisWeek: await User.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      }),
+      testsCompletedThisWeek: await TestResult.countDocuments({
+        completedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      }),
+      trainingsCompletedThisWeek: await TrainingProgress.countDocuments({
+        completedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      }),
+      messagesThisWeek: await Message.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      }),
+    }
+
     res.status(200).json({
       userStats,
       testStats,
       trainingStats,
       complaintStats,
       documentStats,
+      summary: {
+        totalUsers,
+        activeUsers,
+        totalTests,
+        totalTrainings,
+        totalMessages,
+      },
+      recentActivity,
     })
   } catch (error) {
     console.error(error)
@@ -1465,16 +1897,48 @@ app.get("/api/admin/statistics", authenticateToken, authorize(["admin"]), async 
   }
 })
 
-// Routes de messagerie
+// ==================== ROUTES DE MESSAGERIE ====================
+
+// Route pour récupérer tous les utilisateurs pour la messagerie
+app.get("/api/messaging/users", authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.id
+    const currentUserRole = req.user.role
+
+    let users = []
+
+    if (currentUserRole === "admin") {
+      // Admin peut parler à tous les utilisateurs
+      users = await User.find({ _id: { $ne: currentUserId } }).select("firstName lastName email role")
+    } else if (currentUserRole === "responsable") {
+      // Responsable peut parler aux admins et workers
+      users = await User.find({
+        _id: { $ne: currentUserId },
+        role: { $in: ["admin", "worker"] },
+      }).select("firstName lastName email role")
+    } else if (currentUserRole === "worker") {
+      // Worker peut parler aux admins et responsables
+      users = await User.find({
+        _id: { $ne: currentUserId },
+        role: { $in: ["admin", "responsable"] },
+      }).select("firstName lastName email role")
+    }
+
+    res.status(200).json(users)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Erreur serveur" })
+  }
+})
+
 app.get("/api/messages/conversations", authenticateToken, async (req, res) => {
   try {
-    // Trouver tous les utilisateurs avec qui l'utilisateur actuel a échangé des messages
     const conversations = await Message.aggregate([
       {
         $match: {
           $or: [
-            { senderId: mongoose.Types.ObjectId(req.user.id) },
-            { receiverId: mongoose.Types.ObjectId(req.user.id) },
+            { senderId: new mongoose.Types.ObjectId(req.user.id) },
+            { receiverId: new mongoose.Types.ObjectId(req.user.id) },
           ],
         },
       },
@@ -1484,14 +1948,14 @@ app.get("/api/messages/conversations", authenticateToken, async (req, res) => {
       {
         $group: {
           _id: {
-            $cond: [{ $eq: ["$senderId", mongoose.Types.ObjectId(req.user.id)] }, "$receiverId", "$senderId"],
+            $cond: [{ $eq: ["$senderId", new mongoose.Types.ObjectId(req.user.id)] }, "$receiverId", "$senderId"],
           },
           lastMessage: { $first: "$$ROOT" },
           unreadCount: {
             $sum: {
               $cond: [
                 {
-                  $and: [{ $eq: ["$receiverId", mongoose.Types.ObjectId(req.user.id)] }, { $eq: ["$read", false] }],
+                  $and: [{ $eq: ["$receiverId", new mongoose.Types.ObjectId(req.user.id)] }, { $eq: ["$read", false] }],
                 },
                 1,
                 0,
@@ -1535,13 +1999,11 @@ app.get("/api/messages/:userId", authenticateToken, async (req, res) => {
   try {
     const otherUserId = req.params.userId
 
-    // Vérifier si l'autre utilisateur existe
     const otherUser = await User.findById(otherUserId)
     if (!otherUser) {
       return res.status(404).json({ message: "Utilisateur non trouvé" })
     }
 
-    // Récupérer les messages entre les deux utilisateurs
     const messages = await Message.find({
       $or: [
         { senderId: req.user.id, receiverId: otherUserId },
@@ -1549,7 +2011,6 @@ app.get("/api/messages/:userId", authenticateToken, async (req, res) => {
       ],
     }).sort({ createdAt: 1 })
 
-    // Marquer les messages non lus comme lus
     await Message.updateMany(
       {
         senderId: otherUserId,
@@ -1571,13 +2032,11 @@ app.post("/api/messages/:userId", authenticateToken, async (req, res) => {
     const { content } = req.body
     const receiverId = req.params.userId
 
-    // Vérifier si le destinataire existe
     const receiver = await User.findById(receiverId)
     if (!receiver) {
       return res.status(404).json({ message: "Destinataire non trouvé" })
     }
 
-    // Créer le message
     const message = new Message({
       senderId: req.user.id,
       receiverId,
@@ -1596,6 +2055,8 @@ app.post("/api/messages/:userId", authenticateToken, async (req, res) => {
   }
 })
 
+// ==================== ROUTES PUBLIQUES ====================
+
 // Route pour les offres d'emploi publiques
 app.get("/api/jobs", async (req, res) => {
   try {
@@ -1605,6 +2066,11 @@ app.get("/api/jobs", async (req, res) => {
     console.error(error)
     res.status(500).json({ message: "Erreur serveur" })
   }
+})
+
+// Route de test
+app.get("/", (req, res) => {
+  res.json({ message: "Serveur de recrutement en cours d'exécution" })
 })
 
 // Démarrer le serveur
